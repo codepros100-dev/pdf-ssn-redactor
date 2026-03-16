@@ -1,0 +1,132 @@
+# SSN Redactor
+
+A local command-line and desktop tool that scans PDF and JPG files for U.S. Social Security Numbers and produces permanently redacted copies.
+
+**All processing runs 100% on your machine. No data is sent to any external service.**
+
+## Features
+
+- Detects SSNs in three formats: `123-45-6789`, `123 45 6789`, `123456789`
+- Replaces detected SSNs with `XXX-XX-XXXX`
+- Supports PDF files (text-layer extraction) and JPG/JPEG images (OCR via Tesseract)
+- Preserves original files — redacted copies go to a separate output folder
+- Two interfaces: GUI desktop app and CLI
+- Prints a per-file redaction report
+
+## Quick Start
+
+### Option A: Desktop App (no terminal needed)
+
+Double-click the pre-built executable:
+
+```
+dist\SSN Redactor.exe
+```
+
+1. Click **Browse** and select the folder with your PDFs/JPGs
+2. Click **Start Redaction**
+3. Check the `redacted_pdfs` subfolder for results
+
+### Option B: Command Line
+
+```bash
+python -m ssn_redactor.cli "C:\path\to\your\folder"
+```
+
+Example output:
+
+```
+Processing 3 file(s) in C:\Users\you\Documents\invoices ...
+  [1/3] invoice_01.pdf
+  [2/3] scan_02.jpg
+  [3/3] letter_03.pdf
+
+========================================================
+  SSN Redaction Report
+========================================================
+  invoice_01.pdf                           2 SSN(s) redacted
+  scan_02.jpg                              1 SSN(s) redacted
+  letter_03.pdf                            0 SSNs found
+========================================================
+  Total SSNs redacted: 3
+  Output: C:\Users\you\Documents\invoices\redacted_pdfs
+========================================================
+```
+
+### CLI Options
+
+```
+usage: ssn-redactor [-h] [-o OUTPUT_DIR] [-v] folder
+
+positional arguments:
+  folder                Path to a folder containing PDF and/or JPG files.
+
+options:
+  -h, --help            Show this help message and exit.
+  -o, --output-dir      Name of the output subdirectory (default: "redacted_pdfs").
+  -v, --version         Show version and exit.
+```
+
+## Installation
+
+### Prerequisites
+
+| Dependency | Required for | Install |
+|---|---|---|
+| Python 3.10+ | Everything | `winget install Python.Python.3.12` |
+| Tesseract OCR | JPG files only | `winget install UB-Mannheim.TesseractOCR` |
+
+### Install Python packages
+
+```bash
+pip install -r requirements.txt
+```
+
+## Building the Executable
+
+To build a standalone `.exe` that works without Python installed:
+
+```bash
+pip install -r requirements-dev.txt
+build.bat
+```
+
+The executable is output to `dist\SSN Redactor.exe`.
+
+## Project Structure
+
+```
+pdf-ssn-redactor/
+    ssn_redactor/
+        __init__.py         Package metadata and version
+        engine.py           Core detection and redaction logic
+        cli.py              Command-line interface
+        gui.py              Desktop GUI (CustomTkinter)
+    docs/
+        USAGE_GUIDE.md      Step-by-step guide for non-technical users
+    .gitignore
+    build.bat               Windows build script
+    LICENSE                 MIT
+    README.md               This file
+    requirements.txt        Runtime dependencies
+    requirements-dev.txt    Build dependencies (adds PyInstaller)
+```
+
+## How It Works
+
+1. **PDF files**: Text is extracted with [pdfplumber](https://github.com/jsvine/pdfplumber). SSNs are located using regex. [PyMuPDF](https://pymupdf.readthedocs.io/) applies permanent redaction annotations over each match.
+
+2. **JPG files**: [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) extracts word-level bounding boxes. SSNs are detected in the OCR text, matched back to pixel coordinates, and covered with white rectangles plus placeholder text.
+
+3. **Output**: Redacted copies are saved to a `redacted_pdfs` subfolder. Original files are never modified.
+
+## Security Notes
+
+- No network calls. The tool works fully offline.
+- Original files are never modified — only copies are written to the output folder.
+- Files over 500 MB are rejected to prevent resource exhaustion.
+- The regex pattern matches the standard 9-digit SSN format. It does not validate area/group numbers — it errs on the side of redacting more rather than missing an SSN.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
