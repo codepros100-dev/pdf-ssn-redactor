@@ -7,7 +7,6 @@ Delegates all processing to ssn_redactor.engine.
 
 from __future__ import annotations
 
-import os
 import threading
 
 import customtkinter as ctk
@@ -18,7 +17,6 @@ from ssn_redactor.engine import (
     collect_files,
     process_folder,
     validate_folder,
-    SUPPORTED_EXTS,
 )
 
 
@@ -35,7 +33,7 @@ class SSNRedactorApp(ctk.CTk):
         ctk.set_default_color_theme("blue")
 
         self.folder_path = ctk.StringVar(value="")
-        self.is_processing = False
+        self._processing_lock = threading.Lock()
 
         self._build_ui()
 
@@ -152,7 +150,6 @@ class SSNRedactorApp(ctk.CTk):
         self.status_label.configure(text=text)
 
     def _set_running(self, running: bool) -> None:
-        self.is_processing = running
         state = "disabled" if running else "normal"
         self.run_btn.configure(state=state)
         self.browse_btn.configure(state=state)
@@ -165,20 +162,27 @@ class SSNRedactorApp(ctk.CTk):
             self.progress.configure(mode="determinate")
 
     def _start_redaction(self) -> None:
+        # Prevent double-click launching parallel jobs
+        if not self._processing_lock.acquire(blocking=False):
+            return
+
         folder = self.folder_path.get().strip()
         if not folder:
             self._set_status("Please select a folder first.")
+            self._processing_lock.release()
             return
 
         try:
             resolved = validate_folder(folder)
         except ValueError:
             self._set_status("Invalid folder path.")
+            self._processing_lock.release()
             return
 
         files = collect_files(resolved)
         if not files:
             self._set_status("No PDF or JPG files found in that folder.")
+            self._processing_lock.release()
             return
 
         self._clear_log()
@@ -191,34 +195,37 @@ class SSNRedactorApp(ctk.CTk):
         thread.start()
 
     def _run_batch(self, folder: str, files: list[str]) -> None:
-        def on_progress(name: str, idx: int, total: int) -> None:
-            self.after(0, self._set_status, f"[{idx + 1}/{total}] {name}")
+        try:
+            def on_progress(name: str, idx: int, total: int) -> None:
+                self.after(0, self._set_status, f"[{idx + 1}/{total}] {name}")
 
-        batch = process_folder(folder, on_progress=on_progress)
+            batch = process_folder(folder, on_progress=on_progress)
 
-        for r in batch.results:
-            if r.status == Status.ERROR:
-                self.after(0, self._log, f"  [X]  {r.filename}  --  ERROR: {r.error}")
-            elif r.status == Status.NO_TEXT:
-                self.after(0, self._log, f"  [!]  {r.filename}  --  no text layer, skipped")
-            elif r.ssn_count == 0:
-                self.after(0, self._log, f"  [ok] {r.filename}  --  0 SSNs found")
-            else:
-                self.after(0, self._log, f"  [ok] {r.filename}  --  {r.ssn_count} SSN(s) redacted")
+            for r in batch.results:
+                if r.status == Status.ERROR:
+                    self.after(0, self._log, f"  [X]  {r.filename}  --  ERROR: {r.error}")
+                elif r.status == Status.NO_TEXT:
+                    self.after(0, self._log, f"  [!]  {r.filename}  --  no text layer, skipped")
+                elif r.ssn_count == 0:
+                    self.after(0, self._log, f"  [ok] {r.filename}  --  0 SSNs found")
+                else:
+                    self.after(0, self._log, f"  [ok] {r.filename}  --  {r.ssn_count} SSN(s) redacted")
 
-        summary = (
-            f"\n{'_' * 50}\n"
-            f"  Done!  {len(batch.results)} file(s) processed,  "
-            f"{batch.total_redacted} SSN(s) redacted"
-        )
-        if batch.total_errors:
-            summary += f",  {batch.total_errors} error(s)"
-        summary += f"\n  Output: {batch.output_folder}\n{'_' * 50}"
+            summary = (
+                f"\n{'_' * 50}\n"
+                f"  Done!  {len(batch.results)} file(s) processed,  "
+                f"{batch.total_redacted} SSN(s) redacted"
+            )
+            if batch.total_errors:
+                summary += f",  {batch.total_errors} error(s)"
+            summary += f"\n  Output: {batch.output_folder}\n{'_' * 50}"
 
-        self.after(0, self._log, summary)
-        self.after(0, self._set_status, f"Done -- {batch.total_redacted} SSN(s) redacted")
-        self.after(0, self._set_running, False)
-        self.after(0, self.progress.set, 1.0)
+            self.after(0, self._log, summary)
+            self.after(0, self._set_status, f"Done -- {batch.total_redacted} SSN(s) redacted")
+        finally:
+            self.after(0, self._set_running, False)
+            self.after(0, self.progress.set, 1.0)
+            self._processing_lock.release()
 
 
 def main() -> None:

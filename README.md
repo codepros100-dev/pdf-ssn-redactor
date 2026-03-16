@@ -99,6 +99,7 @@ The executable is output to `dist\SSN Redactor.exe`.
 pdf-ssn-redactor/
     ssn_redactor/
         __init__.py         Package metadata and version
+        __main__.py         Enables `python -m ssn_redactor`
         engine.py           Core detection and redaction logic
         cli.py              Command-line interface
         gui.py              Desktop GUI (CustomTkinter)
@@ -122,10 +123,15 @@ pdf-ssn-redactor/
 
 ## Security Notes
 
-- No network calls. The tool works fully offline.
-- Original files are never modified — only copies are written to the output folder.
-- Files over 500 MB are rejected to prevent resource exhaustion.
-- The regex pattern matches the standard 9-digit SSN format. It does not validate area/group numbers — it errs on the side of redacting more rather than missing an SSN.
+- **No network calls.** The tool works fully offline. No telemetry, no analytics.
+- **Original files are never modified** — only copies are written to the output folder.
+- **SSN data is never logged.** Error messages are sanitized to prevent SSN leakage.
+- **Input validation:**
+  - Files over 500 MB are rejected.
+  - PDFs over 10,000 pages are rejected.
+  - Images over 100 megapixels are rejected (decompression bomb guard).
+  - Output directory names are validated against path traversal attacks.
+- **SSN regex** validates area/group/serial ranges per SSA rules (rejects 000, 666, 900-999 area numbers, 00 group, 0000 serial).
 
 ## License
 

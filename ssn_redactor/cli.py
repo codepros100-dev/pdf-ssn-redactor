@@ -18,6 +18,7 @@ from ssn_redactor.engine import (
     collect_files,
     process_folder,
     validate_folder,
+    validate_output_dir_name,
 )
 
 
@@ -75,8 +76,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
+    # Validate inputs before any processing
     try:
         folder = validate_folder(args.folder)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        validate_output_dir_name(args.output_dir)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

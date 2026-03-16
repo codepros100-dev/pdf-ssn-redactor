@@ -13,9 +13,9 @@ Supports SSN formats:
 from __future__ import annotations
 
 import logging
-import os
 import re
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
@@ -29,13 +29,23 @@ log = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-SSN_PATTERN = re.compile(r"\b\d{3}[- ]?\d{2}[- ]?\d{4}\b")
+# SSN regex with area-number validation:
+#   - Area (first 3 digits): cannot be 000, 666, or 900-999
+#   - Group (middle 2 digits): cannot be 00
+#   - Serial (last 4 digits): cannot be 0000
+SSN_PATTERN = re.compile(
+    r"\b(?!000|666|9\d\d)(\d{3})[- ]?"
+    r"(?!00)(\d{2})[- ]?"
+    r"(?!0000)(\d{4})\b"
+)
 REDACTION_TEXT = "XXX-XX-XXXX"
 SUPPORTED_PDF_EXTS = frozenset({".pdf"})
 SUPPORTED_IMAGE_EXTS = frozenset({".jpg", ".jpeg"})
 SUPPORTED_EXTS = SUPPORTED_PDF_EXTS | SUPPORTED_IMAGE_EXTS
 
 MAX_FILE_SIZE_MB = 500
+MAX_PDF_PAGES = 10_000
+MAX_IMAGE_PIXELS = 100_000_000  # ~100 megapixels
 
 
 # ---------------------------------------------------------------------------
@@ -85,15 +95,48 @@ def validate_folder(path: str) -> Path:
     return folder
 
 
+def validate_output_dir_name(name: str) -> str:
+    """
+    Validate that output_dir_name is a simple directory name, not a path.
+
+    Prevents path traversal attacks like '../../Windows/System32'.
+    Raises ValueError if the name contains path separators or is unsafe.
+    """
+    # Reject any path separators, parent refs, or absolute paths
+    if any(c in name for c in ("/", "\\", "\0")):
+        raise ValueError(f"Output directory name must not contain path separators: {name!r}")
+    if name in (".", "..") or name.startswith(".."):
+        raise ValueError(f"Output directory name is unsafe: {name!r}")
+    if not name or not name.strip():
+        raise ValueError("Output directory name must not be empty")
+    return name
+
+
 def _validate_file(path: Path) -> None:
     """Raise ValueError if a file is too large or not a regular file."""
     if not path.is_file():
-        raise ValueError(f"Not a file: {path}")
+        raise ValueError(f"Not a file: {path.name}")
     size_mb = path.stat().st_size / (1024 * 1024)
     if size_mb > MAX_FILE_SIZE_MB:
         raise ValueError(
             f"File exceeds {MAX_FILE_SIZE_MB} MB limit: {path.name} ({size_mb:.1f} MB)"
         )
+
+
+def _sanitize_error(exc: Exception) -> str:
+    """
+    Return a safe error string that cannot leak sensitive document content.
+
+    Exception messages from PDF/image parsers may include extracted text
+    that contains SSNs. This function strips the message to its type
+    and a generic description when the message is suspiciously long.
+    """
+    msg = str(exc)
+    # If the error message is long, it likely contains document content
+    if len(msg) > 200:
+        return f"{type(exc).__name__}: (details truncated for safety)"
+    # Scrub anything that looks like an SSN from the error message
+    return SSN_PATTERN.sub("[REDACTED]", msg)
 
 
 def collect_files(folder: Path) -> list[str]:
@@ -141,6 +184,10 @@ def process_pdf(input_path: Path, output_path: Path) -> FileResult:
     has_text = False
 
     with pdfplumber.open(str(input_path)) as pdf:
+        if len(pdf.pages) > MAX_PDF_PAGES:
+            raise ValueError(
+                f"PDF has {len(pdf.pages)} pages (limit: {MAX_PDF_PAGES})"
+            )
         for idx, page in enumerate(pdf.pages):
             text = page.extract_text() or ""
             if text.strip():
@@ -154,7 +201,6 @@ def process_pdf(input_path: Path, output_path: Path) -> FileResult:
         return result
 
     if not ssn_matches_by_page:
-        # Clean file — copy as-is so output folder is complete
         shutil.copy2(input_path, output_path)
         return result
 
@@ -214,43 +260,53 @@ def process_image(input_path: Path, output_path: Path) -> FileResult:
     _validate_file(input_path)
     result = FileResult(filename=input_path.name, status=Status.CLEAN)
 
-    img = Image.open(input_path).convert("RGB")
-    ocr_data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+    # Guard against decompression bombs
+    Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
-    full_text = " ".join(ocr_data["text"])
-    if not full_text.strip():
-        result.status = Status.NO_TEXT
-        return result
+    img = Image.open(input_path)
+    try:
+        img = img.convert("RGB")
+        ocr_data = pytesseract.image_to_data(
+            img, output_type=pytesseract.Output.DICT
+        )
 
-    matches = find_ssns(full_text)
-    if not matches:
-        shutil.copy2(input_path, output_path)
-        return result
+        full_text = " ".join(ocr_data["text"])
+        if not full_text.strip():
+            result.status = Status.NO_TEXT
+            return result
 
-    # Build word bounding-box index
-    words = []
-    for i in range(len(ocr_data["text"])):
-        word = ocr_data["text"][i].strip()
-        if word:
-            x, y = ocr_data["left"][i], ocr_data["top"][i]
-            w, h = ocr_data["width"][i], ocr_data["height"][i]
-            words.append((word, (x, y, x + w, y + h)))
+        matches = find_ssns(full_text)
+        if not matches:
+            shutil.copy2(input_path, output_path)
+            return result
 
-    draw = ImageDraw.Draw(img)
-    for match in matches:
-        boxes = _find_word_boxes(match.group(), words)
-        if not boxes:
-            continue
-        x0 = min(b[0] for b in boxes)
-        y0 = min(b[1] for b in boxes)
-        x1 = max(b[2] for b in boxes)
-        y1 = max(b[3] for b in boxes)
-        draw.rectangle([x0, y0, x1, y1], fill="white")
-        draw.text((x0, y0), REDACTION_TEXT, fill="black")
-        result.ssn_count += 1
+        # Build word bounding-box index
+        words = []
+        for i in range(len(ocr_data["text"])):
+            word = ocr_data["text"][i].strip()
+            if word:
+                x, y = ocr_data["left"][i], ocr_data["top"][i]
+                w, h = ocr_data["width"][i], ocr_data["height"][i]
+                words.append((word, (x, y, x + w, y + h)))
 
-    img.save(output_path, quality=95)
-    result.status = Status.OK
+        draw = ImageDraw.Draw(img)
+        for match in matches:
+            boxes = _find_word_boxes(match.group(), words)
+            if not boxes:
+                continue
+            x0 = min(b[0] for b in boxes)
+            y0 = min(b[1] for b in boxes)
+            x1 = max(b[2] for b in boxes)
+            y1 = max(b[3] for b in boxes)
+            draw.rectangle([x0, y0, x1, y1], fill="white")
+            draw.text((x0, y0), REDACTION_TEXT, fill="black")
+            result.ssn_count += 1
+
+        img.save(output_path, quality=95)
+        result.status = Status.OK
+    finally:
+        img.close()
+
     return result
 
 
@@ -274,20 +330,22 @@ def process_file(input_path: Path, output_path: Path) -> FileResult:
 def process_folder(
     input_folder: str,
     output_dir_name: str = "redacted_pdfs",
-    on_progress: callable = None,
+    on_progress: Callable[[str, int, int], None] | None = None,
 ) -> BatchResult:
     """
     Process all supported files in a folder.
 
     Args:
         input_folder: Path to the folder containing files.
-        output_dir_name: Name of the output subdirectory.
+        output_dir_name: Name of the output subdirectory (must be a simple
+            name, not a path — validated to prevent path traversal).
         on_progress: Optional callback(filename, index, total) for UI updates.
 
     Returns:
         BatchResult with per-file results and the output folder path.
     """
     folder = validate_folder(input_folder)
+    output_dir_name = validate_output_dir_name(output_dir_name)
     filenames = collect_files(folder)
     batch = BatchResult()
 
@@ -308,9 +366,15 @@ def process_folder(
         try:
             result = process_file(input_path, output_path)
         except Exception as exc:
-            log.exception("Failed to process %s", name)
+            # Log only the filename and error type — never log extracted
+            # text that may contain SSNs.
+            log.error(
+                "Failed to process %s: %s: %s",
+                name, type(exc).__name__, _sanitize_error(exc),
+            )
             result = FileResult(
-                filename=name, status=Status.ERROR, error=str(exc)
+                filename=name, status=Status.ERROR,
+                error=_sanitize_error(exc),
             )
 
         batch.results.append(result)
