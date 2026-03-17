@@ -67,31 +67,54 @@ options:
   -v, --version         Show version and exit.
 ```
 
-## Installation
+## Installation & Building the Executable
 
-### Prerequisites
+### Easy Way (recommended)
 
-| Dependency | Required for | Install |
-|---|---|---|
-| Python 3.10+ | Everything | `winget install Python.Python.3.12` |
-| Tesseract OCR | JPG files only | `winget install UB-Mannheim.TesseractOCR` |
+One script does everything — installs Python, Tesseract, dependencies, and builds the exe:
 
-### Install Python packages
-
-```bash
-pip install -r requirements.txt
+```
+git clone https://github.com/codepros100-dev/pdf-ssn-redactor.git
+cd pdf-ssn-redactor
+setup.bat
 ```
 
-## Building the Executable
+That's it. When it finishes, your exe is at `dist\SSN Redactor.exe`.
 
-To build a standalone `.exe` that works without Python installed:
+### Manual Way (step by step)
 
-```bash
+If you prefer to do it yourself:
+
+**Step 1: Install Python 3.10 or newer**
+
+Download from [python.org](https://www.python.org/downloads/) or run:
+```
+winget install Python.Python.3.12
+```
+During install, check **"Add Python to PATH"**.
+
+**Step 2: Install Tesseract OCR** (only needed for JPG files)
+```
+winget install UB-Mannheim.TesseractOCR
+```
+
+**Step 3: Clone and enter the project**
+```
+git clone https://github.com/codepros100-dev/pdf-ssn-redactor.git
+cd pdf-ssn-redactor
+```
+
+**Step 4: Install Python packages**
+```
 pip install -r requirements-dev.txt
+```
+
+**Step 5: Build the exe**
+```
 build.bat
 ```
 
-The executable is output to `dist\SSN Redactor.exe`.
+The executable is output to `dist\SSN Redactor.exe`. Copy it anywhere — it runs standalone.
 
 ## Project Structure
 
@@ -106,7 +129,8 @@ pdf-ssn-redactor/
     docs/
         USAGE_GUIDE.md      Step-by-step guide for non-technical users
     .gitignore
-    build.bat               Windows build script
+    setup.bat               One-click setup & build (installs everything)
+    build.bat               Build script (if dependencies are already installed)
     LICENSE                 MIT
     README.md               This file
     requirements.txt        Runtime dependencies

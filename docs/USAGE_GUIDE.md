@@ -21,6 +21,28 @@ Everything runs on **your computer**. Nothing is sent online.
 
 ---
 
+## How to Get the App
+
+### If someone gave you `SSN Redactor.exe`
+
+You're all set. Skip to **"Using the Desktop App"** below.
+
+### If you need to build it yourself
+
+1. Go to https://github.com/codepros100-dev/pdf-ssn-redactor
+2. Click the green **Code** button, then click **Download ZIP**
+3. Unzip the folder anywhere on your computer
+4. Open the unzipped folder
+5. Double-click **`setup.bat`**
+6. Wait for it to finish (it installs everything automatically)
+7. When it says **SUCCESS**, your app is at `dist\SSN Redactor.exe`
+
+That's it. You can now copy `SSN Redactor.exe` anywhere and use it.
+
+> **Note:** If you don't have Python installed, `setup.bat` will install it for you. You may need to close and re-run `setup.bat` one time after Python installs.
+
+---
+
 ## Using the Desktop App
 
 ### Step 1: Open the App
@@ -56,7 +78,7 @@ cd C:\path\to\pdf-ssn-redactor
 ### Step 3: Run the Tool
 
 ```
-python -m ssn_redactor.cli "C:\Users\YourName\Desktop\my_files"
+python -m ssn_redactor "C:\Users\YourName\Desktop\my_files"
 ```
 
 Replace the path with the actual folder containing your files.
@@ -83,10 +105,13 @@ PDF files (`.pdf`) and image files (`.jpg`, `.jpeg`).
 The tool will report "no text layer" and skip that file. Convert it to JPG first, then run the tool on the JPG.
 
 **I got an error about "Tesseract not found".**
-Tesseract is needed for JPG files only. If you only have PDFs, this won't affect you. If you need JPG support, install Tesseract and restart your terminal.
+Tesseract is needed for JPG files only. If you only have PDFs, this won't affect you. If you need JPG support, run `setup.bat` again or install Tesseract manually.
 
 **Is my data sent anywhere?**
 No. Everything runs 100% locally on your computer. No internet connection is needed.
 
 **Can I use a custom output folder name?**
-With the CLI, yes: `python -m ssn_redactor.cli -o my_output "C:\path\to\folder"`
+With the CLI, yes: `python -m ssn_redactor -o my_output "C:\path\to\folder"`
+
+**I double-clicked `setup.bat` and it said Python is not recognized.**
+Close the window, then double-click `setup.bat` again. The first run installs Python, but the terminal needs to restart to see it.
