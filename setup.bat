@@ -77,10 +77,10 @@ echo       Packages installed.
 
 REM --- Step 4: Build the exe ---
 echo.
-echo [4/4] Building SSN Redactor.exe...
+echo [4/4] Building SSN Redactor...
 echo       This may take a minute...
 echo.
-pyinstaller --onefile --windowed --name "SSN Redactor" --collect-all customtkinter ssn_redactor\gui.py
+pyinstaller --noconfirm --windowed --name "SSN Redactor" --collect-all customtkinter ssn_redactor\gui.py
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo  ERROR: Build failed. Check the output above for errors.
@@ -95,10 +95,10 @@ echo ============================================================
 echo.
 echo   Your app is ready:
 echo.
-echo       dist\SSN Redactor.exe
+echo       dist\SSN Redactor\SSN Redactor.exe
 echo.
-echo   You can copy it anywhere and double-click to run.
-echo   No Python or terminal needed to use the exe.
+echo   You can copy the entire "dist\SSN Redactor" folder
+echo   anywhere and double-click SSN Redactor.exe to run.
 echo ============================================================
 echo.
 pause

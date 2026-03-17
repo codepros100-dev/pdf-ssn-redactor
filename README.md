@@ -17,10 +17,10 @@ A local command-line and desktop tool that scans PDF and JPG files for U.S. Soci
 
 ### Option A: Desktop App (no terminal needed)
 
-Double-click the pre-built executable:
+Double-click the executable:
 
 ```
-dist\SSN Redactor.exe
+dist\SSN Redactor\SSN Redactor.exe
 ```
 
 1. Click **Browse** and select the folder with your PDFs/JPGs
@@ -114,7 +114,7 @@ pip install -r requirements-dev.txt
 build.bat
 ```
 
-The executable is output to `dist\SSN Redactor.exe`. Copy it anywhere — it runs standalone.
+The app is output to `dist\SSN Redactor\SSN Redactor.exe`. Copy the entire `SSN Redactor` folder anywhere to use it.
 
 ## Project Structure
 
